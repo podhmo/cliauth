@@ -5,6 +5,12 @@ def auth(*, profile: str):
     print(profile)
 
 
+def scopes() -> None:
+    import webbrowser
+
+    webbrowser.open("https://developers.google.com/identity/protocols/googlescopes")
+
+
 def run(argv: t.Optional[str] = None):
     import argparse
 
@@ -15,6 +21,10 @@ def run(argv: t.Optional[str] = None):
     fn = auth
     sub_parser = subparsers.add_parser(fn.__name__, help=fn.__doc__)
     sub_parser.add_argument("--profile", default="default")
+    sub_parser.set_defaults(subcommand=fn)
+
+    fn = scopes
+    sub_parser = subparsers.add_parser(fn.__name__, help=fn.__doc__)
     sub_parser.set_defaults(subcommand=fn)
 
     args = parser.parse_args(argv)

@@ -1,4 +1,4 @@
-from cliauth import cli
+from cliauth.google import cli
 
 if __name__ == "__main__":
     cli.run()

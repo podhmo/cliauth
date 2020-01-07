@@ -1,2 +1,2 @@
 00:
-	python -m cliauth auth
+	python -m cliauth.google scopes
