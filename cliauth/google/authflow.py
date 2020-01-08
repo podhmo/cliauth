@@ -1,45 +1,16 @@
 import typing as t
 import sys
-import pathlib
+
 import logging
-import dataclasses
 from google_auth_oauthlib import flow
+from google.auth.exceptions import GoogleAuthError
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
-from ..langhelpers import reify
+from .config import Config
 from . import browse
 
 logger = logging.getLogger(__name__)
-
-
-@dataclasses.dataclass
-class Config:
-    prefix: str = "~/.config/cliauth"
-    profile: str = ""
-
-    skip_verify: bool = True
-    token_refresh_if_need: bool = True
-    launch_browser: bool = True
-
-    @reify
-    def client_secrets_path(self) -> pathlib.Path:
-        name = "-".join(x for x in [self.profile, "google-client-secrets.json"] if x)
-        return self.dirpath / name
-
-    @reify
-    def client_token_path(self) -> pathlib.Path:
-        name = "-".join(x for x in [self.profile, "google-token.json"] if x)
-        return self.dirpath / name
-
-    @reify
-    def dirpath(self) -> pathlib.Path:
-        dirpath = pathlib.Path(self.prefix).expanduser()
-        logger.debug("see: %s", dirpath)
-        if not dirpath.exists():
-            logger.info("create: %s", dirpath)
-            dirpath.mkdir(exist_ok=True)
-        return dirpath
 
 
 class Flow:
@@ -47,23 +18,29 @@ class Flow:
         self.config = config
         self.logger = logger
 
-    def get_credentials(self, scopes: t.List[str],) -> Credentials:
+    def get_credentials(
+        self, scopes: t.List[str], *, force: bool = False
+    ) -> Credentials:
         token_path = self.config.client_token_path
-        self.logger.debug("see: %s", token_path)
 
-        try:
-            credentials = Credentials.from_authorized_user_file(
-                token_path, scopes=scopes
-            )
-            if self.config.skip_verify or credentials.valid:
-                return credentials
-
-            if self.config.token_refresh_if_need:
-                credentials.refresh(Request())  # xxx
-                if credentials.valid:
+        if not force:
+            self.logger.debug("see: %s", token_path)
+            try:
+                credentials = Credentials.from_authorized_user_file(
+                    token_path, scopes=scopes
+                )
+                if self.config.skip_verify or credentials.valid:
                     return credentials
-        except FileNotFoundError:
-            pass
+
+                if self.config.token_refresh_if_need:
+                    # invalid scope
+                    credentials.refresh(Request())  # xxx
+                    if credentials.valid:
+                        return credentials
+            except GoogleAuthError as e:
+                self.logger.info("auth error is raised: %r", e, exc_info=True)
+            except FileNotFoundError:
+                pass
 
         secrets_path = self.config.client_secrets_path
         self.logger.info("client secrets are invalid (or not found). %s", secrets_path)
@@ -82,7 +59,9 @@ class Flow:
             wf.write(appflow.credentials.to_json())  # TODO: store N items
         return appflow.credentials
 
-    def get_credentials_in_loop(self, scopes: t.List[str],) -> t.Optional[Credentials]:
+    def get_credentials_in_loop(
+        self, scopes: t.List[str], *, force: bool = False
+    ) -> t.Optional[Credentials]:
         if not scopes:
             print(
                 """
@@ -95,7 +74,7 @@ please passing scopes: (e.g. 'https://www.googleapis.com/auth/spreadsheets.reado
 
         while True:
             try:
-                return self.get_credentials(scopes)
+                return self.get_credentials(scopes, force=force)
             except (FileNotFoundError, ValueError) as e:
                 logger.warn("\t !! excpetion %r", e)
                 logger.debug("error", exc_info=True)
